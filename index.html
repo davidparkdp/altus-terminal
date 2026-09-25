@@ -280,7 +280,8 @@ function calculateLayoutDimensions() {
     const pagesEl = document.getElementById("pages");
     const h = pagesEl.offsetHeight;
     const w = pagesEl.offsetWidth;
-    slotsPerCol = Math.max(5, Math.floor(h / SLOT_HEIGHT));
+    // Subtract the page's 4px top + bottom padding so the last row isn't cut off
+    slotsPerCol = Math.max(5, Math.floor((h - 8) / SLOT_HEIGHT));
     currentNumCols = Math.max(1, Math.floor(w / MIN_COL_WIDTH));
 }
 
@@ -366,8 +367,10 @@ function fullRebuild() {
 
 function renderTicker(ticker) {
     const q = quoteStore[ticker];
-    if (!q) return;
-    
+    // A bad quote must never throw here: fullRebuild redraws every ticker in one loop,
+    // and one error would leave all the remaining rows blank.
+    if (!q || typeof q.c !== "number" || typeof q.d !== "number" || typeof q.dp !== "number") return;
+
     const rows = document.querySelectorAll(`[data-ticker="${ticker}"]`);
     rows.forEach(row => {
         const name = row.dataset.name || "";
@@ -490,7 +493,9 @@ function buildWorkerSource() {
                 const res = await fetch(url);
                 if (res.status === 429) { await sleep(PAUSE_ON_429); return; }
                 const data = await res.json();
-                if (data && typeof data.c !== 'undefined') {
+                // Skip empty quotes (unknown/unsupported tickers come back as c:0 with null changes)
+                if (data && typeof data.c === 'number' && data.c !== 0 &&
+                    typeof data.d === 'number' && typeof data.dp === 'number') {
                     postMessage({ type: 'quote', ticker, data: { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() } });
                 }
             } catch (e) { }
