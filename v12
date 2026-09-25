@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Altus Terminal</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    color: #00ffcc;
+    font-family: monospace;
+    font-size: 13px;
+    overflow: hidden;
+}
+.header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    color: orange;
+    padding: 6px 12px;
+    border-bottom: 1px solid #333;
+    background: #111;
+    gap: 16px;
+}
+.header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; white-space: nowrap; }
+.header-tracker {
+    font-size: 11px;
+    color: #00ffcc;
+    background: #1a1a1a;
+    padding: 2px 8px;
+    border: 1px solid #333;
+    border-radius: 2px;
+    display: flex;
+    gap: 12px;
+}
+.header-tracker span { font-weight: bold; }
+.header-time  { color: #888; font-size: 11px; margin-left: auto; white-space: nowrap; }
+.tabs {
+    flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 12px;
+    background: #111;
+    border-bottom: 1px solid #333;
+    align-items: center;
+}
+.tab {
+    padding: 3px 14px;
+    cursor: pointer;
+    border: 1px solid #444;
+    color: #888;
+    background: transparent;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all .15s;
+}
+.tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
+.tab:hover:not(.active) { color: #ccc; border-color: #666; }
+
+.search-wrap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.search-wrap input {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #ffb300;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 3px 8px;
+    width: 180px;
+    outline: none;
+}
+.search-wrap input:focus { border-color: orange; }
+.search-wrap input::placeholder { color: #555; }
+.search-info {
+    color: #888;
+    font-size: 10px;
+    white-space: nowrap;
+    min-width: 50px;
+}
+.sort-select {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #888;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 4px;
+    outline: none;
+    cursor: pointer;
+}
+
+#pages {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+}
+.page {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 4px 6px;
+}
+.page.active { display: flex; }
+.col {
+    flex: 1;
+    min-width: 330px;
+    overflow: hidden;
+    padding: 0 3px;
+    border-right: 1px solid #1a1a1a;
+}
+.col:last-child { border-right: none; }
+
+.statusbar {
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #555;
+    display: flex;
+    gap: 16px;
+}
+
+.slot { height: 21px; line-height: 21px; overflow: hidden; }
+.slot-heading {
+    color: #ddd;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    display: grid;
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    align-items: center;
+    gap: 1px;
+    border-bottom: 1px solid #0f0f0f;
+}
+.slot-data {
+    display: grid;
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    align-items: center;
+    gap: 1px;
+    border-bottom: 1px solid #0f0f0f;
+}
+.slot-data:hover { background: #141414; }
+
+.cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
+.cell-name {
+    text-align: left; color: #ffb300; font-size: 11px;
+    padding-right: 3px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+}
+.cell-price, .cell-chg, .cell-pct { text-align: right; }
+.cell-age { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
+.green { color: #00e676; }
+.red   { color: #ff5252; }
+.slot-data.search-match { background: rgba(255,165,0,.12); }
+.slot-data.search-current { background: rgba(255,165,0,.35); }
+.slot-data.fetching { box-shadow: inset 3px 0 0 0 orange; }
+</style>
+</head>
+<body>
+<div class="header">
+    <div class="header-title">◆ ALTUS TERMINAL</div>
+    <div class="header-tracker" id="topTracker" style="display: none;">
+        <div>QUEUE: <span id="topTicker">—</span></div>
+        <div>POS: <span id="topCounter">0 / 0</span></div>
+    </div>
+    <div class="header-time" id="clock"></div>
+</div>
+<div class="tabs" id="tabs">
+    <div class="search-wrap">
+        <select id="sortSelect" class="sort-select">
+            <option value="manual">Sort: Manual</option>
+            <option value="alpha">Sort: A→Z</option>
+            <option value="pct">Sort: % Chg</option>
+            <option value="pct-ex">Sort: % Chg (ex L/S)</option>
+        </select>
+        <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off">
+        <span class="search-info" id="searchInfo"></span>
+    </div>
+</div>
+<div id="pages"></div>
+<div class="statusbar">
+    <span id="status">Loading…</span>
+    <span id="counter"></span>
+</div>
+
+<script>
+const API_KEY = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const CALL_DELAY_MS = 1200;
+const PAUSE_ON_429 = 4000;
+const MIN_COL_WIDTH = 330;
+const SLOT_HEIGHT = 21;
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
+
+let currentNumCols = 1;
+let slotsPerCol = 10;
+let originalItems = [];
+let quoteStore = {};
+let fetchIndexMap = {};   
+let currentSort = "manual";
+let currentPageIndex = 0;
+let resizeTimeout;
+let worker = null;
+let searchQuery = "";
+let searchMatches = [];   
+let searchCurrentIdx = -1;
+let lastActiveTicker = ""; 
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function updateClock() {
+    const now = new Date();
+    document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
+}
+setInterval(updateClock, 1000); updateClock();
+
+function ageLabel(ts) {
+    if (!ts) return "";
+    const s = Math.floor((Date.now()-ts)/1000);
+    if (s < 60) return s+"s";
+    if (s < 3600) return Math.floor(s/60)+"m";
+    return Math.floor(s/3600)+"h";
+}
+
+function fetchTitle(ticker) {
+    const idx = fetchIndexMap[ticker];
+    const total = Object.keys(fetchIndexMap).length;
+    return idx === undefined ? "" : `Spreadsheet Sequence: #${idx + 1} of ${total}`;
+}
+
+async function loadCSV(url) {
+    const text = await (await fetch(url)).text();
+    return text.trim().split("\n").map(line => {
+        const fields = [];
+        let cur = "", inQ = false;
+        for (const ch of line) {
+            if (ch === '"') inQ = !inQ;
+            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
+            else cur += ch;
+        }
+        fields.push(cur.trim());
+        return fields;
+    });
+}
+
+async function loadUniqueItems() {
+    const rows = await loadCSV(SHEET_URL);
+    return rows.map(r => ({ group: (r[0]||"").trim(), ticker: (r[1]||"").trim(), name: (r[2]||"").trim() }))
+               .filter(item => item.group && item.ticker);
+}
+
+function sortItems(items, mode) {
+    if (mode === "manual") return [...items];
+    const groupOrder = [];
+    const groupMap = {};
+    items.forEach(item => {
+        if (!groupMap[item.group]) { groupMap[item.group] = []; groupOrder.push(item.group); }
+        groupMap[item.group].push({ ...item });
+    });
+    groupOrder.forEach(g => {
+        const arr = groupMap[g];
+        if (mode === "alpha") arr.sort((a,b) => a.ticker.localeCompare(b.ticker));
+        else if (mode === "pct" || (mode === "pct-ex" && !["LONG","SHORT"].includes(g.toUpperCase()))) {
+            arr.sort((a,b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
+        }
+    });
+    return groupOrder.flatMap(g => groupMap[g]);
+}
+
+function calculateLayoutDimensions() {
+    const pagesEl = document.getElementById("pages");
+    const h = pagesEl.offsetHeight;
+    const w = pagesEl.offsetWidth;
+    slotsPerCol = Math.max(5, Math.floor(h / SLOT_HEIGHT));
+    currentNumCols = Math.max(1, Math.floor(w / MIN_COL_WIDTH));
+}
+
+function fullRebuild() {
+    calculateLayoutDimensions();
+    const sorted = sortItems(originalItems, currentSort);
+    
+    const slots = [];
+    const groupSeen = new Set();
+    sorted.forEach(item => {
+        if (!groupSeen.has(item.group)) {
+            groupSeen.add(item.group);
+            slots.push({ type: "heading", text: item.group });
+        }
+        slots.push({ type: "data", ...item });
+    });
+
+    const columns = [];
+    let col = [];
+    slots.forEach((s, i) => {
+        if (col.length >= slotsPerCol || (s.type === "heading" && col.length === slotsPerCol - 1)) {
+            while (col.length < slotsPerCol) col.push({ type: "empty" });
+            columns.push(col);
+            col = [];
+        }
+        col.push(s);
+    });
+    while (col.length < slotsPerCol) col.push({ type: "empty" });
+    columns.push(col);
+
+    let numPages = Math.ceil(columns.length / currentNumCols);
+    if (currentPageIndex >= numPages) currentPageIndex = Math.max(0, numPages - 1);
+
+    const tabsEl = document.getElementById("tabs");
+    const pagesEl = document.getElementById("pages");
+    tabsEl.querySelectorAll(".tab").forEach(t => t.remove());
+    pagesEl.innerHTML = "";
+    
+    const searchWrap = tabsEl.querySelector(".search-wrap");
+
+    for (let p = 0; p < numPages; p++) {
+        const tab = document.createElement("button");
+        tab.className = "tab" + (p === currentPageIndex ? " active" : "");
+        tab.textContent = `PAGE ${p+1}`;
+        tab.onclick = () => switchPage(p);
+        tabsEl.insertBefore(tab, searchWrap);
+
+        const page = document.createElement("div");
+        page.className = "page" + (p === currentPageIndex ? " active" : "");
+        page.id = `page-${p}`;
+        
+        for (let c = 0; c < currentNumCols; c++) {
+            const colIdx = p * currentNumCols + c;
+            const colDiv = document.createElement("div");
+            colDiv.className = "col";
+            
+            if (colIdx < columns.length) {
+                columns[colIdx].forEach(slot => {
+                    const el = document.createElement("div");
+                    el.className = "slot";
+                    if (slot.type === "heading") {
+                        el.classList.add("slot-heading");
+                        el.innerHTML = `<div style="grid-column:1/3">${slot.text}</div><div></div><div></div><div></div><div></div>`;
+                    } else if (slot.type === "data") {
+                        el.classList.add("slot-data");
+                        el.dataset.ticker = slot.ticker;
+                        el.dataset.name = slot.name;
+                        el.dataset.pageIdx = p; 
+                        el.innerHTML = `<div class="cell-ticker" title="${fetchTitle(slot.ticker)}">${slot.ticker}</div><div class="cell-name">${slot.name}</div><div class="cell-price">—</div><div class="cell-chg"></div><div class="cell-pct"></div><div class="cell-age"></div>`;
+                    } else el.classList.add("slot-empty");
+                    colDiv.appendChild(el);
+                });
+            }
+            page.appendChild(colDiv);
+        }
+        pagesEl.appendChild(page);
+    }
+    
+    Object.keys(quoteStore).forEach(ticker => { renderTicker(ticker); });
+    if (lastActiveTicker) highlightFetching(lastActiveTicker);
+    if (searchQuery) applySearch(searchQuery, false);
+}
+
+function renderTicker(ticker) {
+    const q = quoteStore[ticker];
+    if (!q) return;
+    
+    const rows = document.querySelectorAll(`[data-ticker="${ticker}"]`);
+    rows.forEach(row => {
+        const name = row.dataset.name || "";
+        const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
+        const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
+        
+        row.className = `slot slot-data ${color}${keep.length ? " " + keep.join(" ") : ""}`;
+        row.innerHTML = `<div class="cell-ticker" title="${fetchTitle(ticker)}">${ticker}</div><div class="cell-name" title="${name}">${name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
+    });
+}
+
+function switchPage(idx) {
+    currentPageIndex = idx;
+    document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
+    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+}
+
+function highlightFetching(ticker) {
+    lastActiveTicker = ticker;
+    document.querySelectorAll(".slot-data.fetching").forEach(el => el.classList.remove("fetching"));
+    document.querySelectorAll(`[data-ticker="${ticker}"]`).forEach(row => {
+        row.classList.add("fetching");
+    });
+}
+
+// Search Mechanics
+function applySearch(query, resetToFirst = true) {
+    searchQuery = query;
+    document.querySelectorAll(".slot-data.search-match, .slot-data.search-current")
+        .forEach(el => el.classList.remove("search-match", "search-current"));
+
+    if (!query.trim()) {
+        searchMatches = [];
+        searchCurrentIdx = -1;
+        document.getElementById("searchInfo").textContent = "";
+        return;
+    }
+
+    const q = query.trim().toLowerCase();
+    searchMatches = Array.from(document.querySelectorAll(".slot-data")).filter(row => {
+        const ticker = (row.dataset.ticker || "").toLowerCase();
+        const name = (row.dataset.name || "").toLowerCase();
+        return ticker.includes(q) || name.includes(q);
+    });
+
+    if (resetToFirst || searchCurrentIdx < 0 || searchCurrentIdx >= searchMatches.length) {
+        searchCurrentIdx = searchMatches.length ? 0 : -1;
+    }
+
+    searchMatches.forEach(row => row.classList.add("search-match"));
+    highlightCurrentMatch();
+}
+
+function highlightCurrentMatch() {
+    const infoEl = document.getElementById("searchInfo");
+    if (!searchMatches.length) {
+        infoEl.textContent = searchQuery.trim() ? "0/0" : "";
+        return;
+    }
+    const row = searchMatches[searchCurrentIdx];
+    if (row) {
+        row.classList.add("search-current");
+        const pIdx = parseInt(row.dataset.pageIdx, 10);
+        if (!isNaN(pIdx)) switchPage(pIdx);
+        row.scrollIntoView({ block: "nearest" });
+    }
+    infoEl.textContent = `${searchCurrentIdx + 1}/${searchMatches.length}`;
+}
+
+function stepSearch(dir) {
+    if (!searchMatches.length) return;
+    document.querySelectorAll(".slot-data.search-current").forEach(el => el.classList.remove("search-current"));
+    searchCurrentIdx = (searchCurrentIdx + dir + searchMatches.length) % searchMatches.length;
+    highlightCurrentMatch();
+}
+
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("input", e => applySearch(e.target.value));
+searchInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        stepSearch(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+        searchInput.value = "";
+        applySearch("");
+        searchInput.blur();
+    }
+});
+
+document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+    }
+});
+
+document.getElementById("pages").addEventListener("click", e => {
+    const cell = e.target.closest(".cell-ticker");
+    if (!cell) return;
+    const row = cell.closest(".slot-data");
+    if (!row || !row.dataset.ticker) return;
+    window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(row.dataset.ticker)}`, "_blank", "noopener");
+});
+
+// Worker Engine Setup
+function buildWorkerSource() {
+    return `
+        const API_KEY = ${JSON.stringify(API_KEY)};
+        const CALL_DELAY_MS = ${CALL_DELAY_MS};
+        const PAUSE_ON_429 = ${PAUSE_ON_429};
+        let mappedRegistry = {}; 
+        let totalCount = 0;
+
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function fetchQuote(ticker) {
+            const url = \`https://finnhub.io/api/v1/quote?symbol=\${encodeURIComponent(ticker)}&token=\${API_KEY}\`;
+            try {
+                const res = await fetch(url);
+                if (res.status === 429) { await sleep(PAUSE_ON_429); return; }
+                const data = await res.json();
+                if (data && typeof data.c !== 'undefined') {
+                    postMessage({ type: 'quote', ticker, data: { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() } });
+                }
+            } catch (e) { }
+        }
+
+        async function loop() {
+            let currentGlobalIndex = 0;
+            while (true) {
+                if (totalCount === 0) { await sleep(500); continue; }
+                if (currentGlobalIndex >= totalCount) currentGlobalIndex = 0;
+                
+                const ticker = mappedRegistry[currentGlobalIndex];
+                if (ticker) {
+                    postMessage({ type: 'status', ticker, numericIndex: currentGlobalIndex, total: totalCount });
+                    await fetchQuote(ticker);
+                }
+                
+                currentGlobalIndex++;
+                await sleep(CALL_DELAY_MS);
+            }
+        }
+
+        self.onmessage = (e) => {
+            if (e.data && e.data.type === 'initializeRegistry') {
+                mappedRegistry = e.data.registry;
+                totalCount = e.data.total;
+            }
+        };
+
+        loop();
+    `;
+}
+
+function startWorkerWithRegistry(registryObj, total) {
+    if (worker) return; 
+    
+    const blob = new Blob([buildWorkerSource()], { type: "application/javascript" });
+    worker = new Worker(URL.createObjectURL(blob));
+
+    const topTracker = document.getElementById("topTracker");
+    const topTicker = document.getElementById("topTicker");
+    const topCounter = document.getElementById("topCounter");
+    
+    topTracker.style.display = "flex";
+
+    worker.onmessage = (e) => {
+        const msg = e.data;
+        if (msg.type === "quote") {
+            quoteStore[msg.ticker] = msg.data;
+            renderTicker(msg.ticker);
+        } else if (msg.type === "status") {
+            // Absolute assignments to decouple UI logic entirely
+            document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
+            document.getElementById("counter").textContent = `${msg.numericIndex + 1} / ${msg.total}`;
+            
+            // Mirror absolute spreadsheet metrics to the top status display
+            topTicker.textContent = msg.ticker;
+            topCounter.textContent = `${msg.numericIndex + 1} / ${msg.total}`;
+            
+            highlightFetching(msg.ticker);
+        }
+    };
+
+    worker.postMessage({ type: "initializeRegistry", registry: registryObj, total: total });
+}
+
+let audioCtx = null;
+function enableBackgroundKeepAlive() {
+    if (audioCtx) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.00001; 
+        osc.frequency.value = 20000;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+    } catch (e) {
+        console.warn("Background keep-alive audio could not start:", e);
+    }
+}
+["click", "keydown", "touchstart"].forEach(evt => {
+    document.addEventListener(evt, enableBackgroundKeepAlive, { once: true });
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+    }
+});
+
+const resizeObserver = new ResizeObserver(() => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => { fullRebuild(); }, 200);
+});
+
+async function init() {
+    originalItems = await loadUniqueItems();
+    
+    const spreadsheetOrder = [...new Set(originalItems.map(item => item.ticker))];
+    const workerRegistry = {};
+    
+    spreadsheetOrder.forEach((ticker, index) => {
+        fetchIndexMap[ticker] = index;       
+        workerRegistry[index] = ticker;      
+    }); 
+    
+    resizeObserver.observe(document.getElementById("pages"));
+    fullRebuild();
+    
+    startWorkerWithRegistry(workerRegistry, spreadsheetOrder.length);
+}
+
+document.getElementById("sortSelect").addEventListener("change", e => {
+    currentSort = e.target.value;
+    fullRebuild();
+});
+
+setInterval(() => {
+    if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild();
+}, 4000);
+
+init();
+</script>
+</body>
+</html>
