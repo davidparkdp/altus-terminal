@@ -87,6 +87,17 @@ body {
     white-space: nowrap;
     min-width: 50px;
 }
+.nav-btn {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: orange;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+.nav-btn:hover:not(:disabled) { border-color: orange; background: rgba(255,165,0,.08); }
+.nav-btn:disabled { color: #444; border-color: #2a2a2a; cursor: default; }
 .sort-select {
     background: #1a1a1a;
     border: 1px solid #444;
@@ -178,6 +189,8 @@ body {
 </div>
 <div class="tabs" id="tabs">
     <div class="search-wrap">
+        <button id="prevPage" class="nav-btn" title="Previous page">◀</button>
+        <button id="nextPage" class="nav-btn" title="Next page">▶</button>
         <select id="sortSelect" class="sort-select">
             <option value="manual">Sort: Manual</option>
             <option value="alpha">Sort: A→Z</option>
@@ -360,6 +373,7 @@ function fullRebuild() {
         pagesEl.appendChild(page);
     }
     
+    updateNavButtons();
     Object.keys(quoteStore).forEach(ticker => { renderTicker(ticker); });
     if (lastActiveTicker) highlightFetching(lastActiveTicker);
     if (searchQuery) applySearch(searchQuery, false);
@@ -386,7 +400,22 @@ function switchPage(idx) {
     currentPageIndex = idx;
     document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+    updateNavButtons();
 }
+
+// Prev/next buttons stop at the ends (no wrapping from last page back to first)
+function updateNavButtons() {
+    const total = document.querySelectorAll(".page").length;
+    document.getElementById("prevPage").disabled = currentPageIndex <= 0;
+    document.getElementById("nextPage").disabled = currentPageIndex >= total - 1;
+}
+document.getElementById("prevPage").addEventListener("click", () => {
+    if (currentPageIndex > 0) switchPage(currentPageIndex - 1);
+});
+document.getElementById("nextPage").addEventListener("click", () => {
+    const total = document.querySelectorAll(".page").length;
+    if (currentPageIndex < total - 1) switchPage(currentPageIndex + 1);
+});
 
 function highlightFetching(ticker) {
     lastActiveTicker = ticker;
